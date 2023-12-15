@@ -1,0 +1,4 @@
+[submodule "Common"]
+	path = Common
+	url = https://github.com/VHEMaster/AutoEcuCommon
+	branch = master
