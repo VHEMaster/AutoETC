@@ -21,7 +21,13 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "delay.h"
+#include "misc.h"
+#include "adc.h"
+#include "can.h"
+#include "sensors.h"
+#include "outputs.h"
+#include "etc.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,10 +56,27 @@ DMA_HandleTypeDef hdma_spi1_tx;
 DMA_HandleTypeDef hdma_spi2_rx;
 DMA_HandleTypeDef hdma_spi2_tx;
 
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim6;
+TIM_HandleTypeDef htim7;
 
 /* USER CODE BEGIN PV */
+#ifdef DEBUG
+volatile static uint32_t fast_irq_start = 0;
+volatile static uint32_t fast_irq_end = 0;
+volatile static uint16_t fast_irq_times = 0;
+volatile static uint32_t fast_irq_time = 0;
+volatile static float fast_irq_avg = 0;
+volatile static float fast_irq_max = 0;
 
+volatile static uint32_t slow_irq_start = 0;
+volatile static uint32_t slow_irq_end = 0;
+volatile static uint16_t slow_irq_times = 0;
+volatile static uint32_t slow_irq_time = 0;
+volatile static float slow_irq_avg = 0;
+volatile static float slow_irq_max = 0;
+#endif
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -65,12 +88,172 @@ static void MX_IWDG_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_TIM2_Init(void);
+static void MX_TIM6_Init(void);
+static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+STATIC_INLINE void fast_loop(void)
+{
+#ifdef DEBUG
+  fast_irq_start = Delay_Tick;
+#endif
+
+  adc_fast_loop();
+  Misc_Fast_Loop();
+  etc_irq_fast_loop();
+
+#ifdef DEBUG
+  //For time measurement taken by the fast irq handler. No need to optimize anything here
+  fast_irq_end = Delay_Tick;
+  fast_irq_time = DelayDiff(fast_irq_end, fast_irq_start);
+
+  if(fast_irq_avg == 0)
+    fast_irq_avg = fast_irq_time;
+  else if(fast_irq_times < 1000) {
+    fast_irq_avg = fast_irq_avg * 0.99f + fast_irq_time * 0.01f;
+    if(fast_irq_time > fast_irq_max)
+      fast_irq_max = fast_irq_time;
+    else fast_irq_max = fast_irq_max * 0.99f + fast_irq_time * 0.01f;
+    fast_irq_times++;
+  } else {
+    fast_irq_avg = fast_irq_avg * 0.99999f + fast_irq_time * 0.00001f;
+    if(fast_irq_time > fast_irq_max)
+      fast_irq_max = fast_irq_time;
+    else fast_irq_max = fast_irq_max * 0.99999f + fast_irq_time * 0.00001f;
+  }
+#endif
+}
+
+STATIC_INLINE void slow_loop(void)
+{
+#ifdef DEBUG
+  slow_irq_start = Delay_Tick;
+#endif
+
+  adc_slow_loop();
+  Misc_Loop();
+  sensors_loop();
+  outputs_loop();
+  etc_irq_slow_loop();
+
+#ifdef DEBUG
+  //For time measurement taken by the slow irq handler. No need to optimize anything here
+  slow_irq_end = Delay_Tick;
+  slow_irq_time = DelayDiff(slow_irq_end, slow_irq_start);
+
+  if(slow_irq_avg == 0)
+    slow_irq_avg = slow_irq_time;
+  else if(slow_irq_times < 1000) {
+    slow_irq_avg = slow_irq_avg * 0.99f + slow_irq_time * 0.01f;
+    if(slow_irq_time > slow_irq_max)
+      slow_irq_max = slow_irq_time;
+    else slow_irq_max = slow_irq_max * 0.99f + slow_irq_time * 0.01f;
+    slow_irq_times++;
+  } else {
+    slow_irq_avg = slow_irq_avg * 0.99999f + slow_irq_time * 0.00001f;
+    if(slow_irq_time > slow_irq_max)
+      slow_irq_max = slow_irq_time;
+    else slow_irq_max = slow_irq_max * 0.99999f + slow_irq_time * 0.00001f;
+  }
+#endif
+}
+
+INLINE void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  if (htim == &htim6) {
+    fast_loop();
+  } else if (htim == &htim7) {
+    slow_loop();
+  }
+}
+
+INLINE ITCM_FUNC void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
+{
+  if(htim == &htim3 && htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2) {
+    //htim2.Instance->CCR1 = o2_pwm_period;
+  }
+}
+
+INLINE void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef * hspi)
+{
+  if(hspi == &hspi2) {
+    Misc_TxCpltCallback(hspi);
+  } else if(hspi == &hspi1) {
+    ADC_TxCpltCallback(hspi);
+  }
+}
+
+INLINE void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef * hspi)
+{
+  if(hspi == &hspi2) {
+    Misc_RxCpltCallback(hspi);
+  } else if(hspi == &hspi1) {
+    ADC_RxCpltCallback(hspi);
+  }
+}
+INLINE void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef * hspi)
+{
+  if(hspi == &hspi2) {
+    Misc_TxRxCpltCallback(hspi);
+  } else if(hspi == &hspi1) {
+    ADC_TxRxCpltCallback(hspi);
+  }
+}
+
+INLINE void HAL_SPI_ErrorCallback(SPI_HandleTypeDef * hspi)
+{
+  if(hspi == &hspi2) {
+    Misc_ErrorCallback(hspi);
+  } else if(hspi == &hspi1) {
+    ADC_ErrorCallback(hspi);
+  }
+}
+
+INLINE void HAL_CAN_TxMailbox0AbortCallback(CAN_HandleTypeDef *hcan)
+{
+  can_txfifo_aborted_callback(hcan, CAN_TX_MAILBOX0);
+}
+
+INLINE void HAL_CAN_TxMailbox1AbortCallback(CAN_HandleTypeDef *hcan)
+{
+  can_txfifo_aborted_callback(hcan, CAN_TX_MAILBOX1);
+}
+
+INLINE void HAL_CAN_TxMailbox2AbortCallback(CAN_HandleTypeDef *hcan)
+{
+  can_txfifo_aborted_callback(hcan, CAN_TX_MAILBOX2);
+}
+
+INLINE void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *hcan)
+{
+  can_txfifo_completed_callback(hcan, CAN_TX_MAILBOX0);
+}
+
+INLINE void HAL_CAN_TxMailbox1CompleteCallback(CAN_HandleTypeDef *hcan)
+{
+  can_txfifo_completed_callback(hcan, CAN_TX_MAILBOX1);
+}
+
+INLINE void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef *hcan)
+{
+  can_txfifo_completed_callback(hcan, CAN_TX_MAILBOX2);
+}
+
+INLINE void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+  can_rxfifo_pending_callback(hcan, CAN_RX_FIFO0);
+}
+
+INLINE void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+  can_rxfifo_pending_callback(hcan, CAN_RX_FIFO1);
+}
 
 /* USER CODE END 0 */
 
@@ -108,7 +291,46 @@ int main(void)
   MX_SPI1_Init();
   MX_SPI2_Init();
   MX_TIM3_Init();
+  MX_TIM2_Init();
+  MX_TIM6_Init();
+  MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
+
+  //Freeze peripherial during debug
+  DBGMCU->APB1FZ = 0x7E01BFF;
+  DBGMCU->APB2FZ = 0x70003;
+
+  __HAL_DBGMCU_FREEZE_TIM2();
+  __HAL_DBGMCU_FREEZE_IWDG();
+
+  HAL_PWR_EnableBkUpAccess();
+
+  HAL_GPIO_WritePin(MCU_OUTPUT_EN_GPIO_Port, MCU_OUTPUT_EN_Pin, GPIO_PIN_SET);
+
+  DelayInit(&htim2);
+
+  sensors_init();
+  outputs_init();
+
+  //sensors_register_digital(SensorOilPressure, SENS_OIL_GPIO_Port, SENS_OIL_Pin, 1);
+
+  //outputs_register(OutFuelPumpRelay, FUEL_PUMP_GPIO_Port, FUEL_PUMP_Pin, 1, GPIO_PIN_SET);
+
+  adc_register(AdcChPowerVoltage,             ADC_RANGE_0P2500, 2.0f, ADC_FILTER_ENABLE);
+
+  adc_init(&hspi1);
+
+  Misc_Init(&hspi2);
+
+  can_init(&hcan);
+
+  etc_init();
+
+  HAL_IWDG_Refresh(&hiwdg);
+
+  HAL_TIM_Base_Start_IT(&htim6);
+  HAL_TIM_Base_Start_IT(&htim7);
+  HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_2);
 
   /* USER CODE END 2 */
 
@@ -116,6 +338,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    etc_loop();
+    HAL_IWDG_Refresh(&hiwdg);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -212,8 +436,8 @@ static void MX_IWDG_Init(void)
   /* USER CODE END IWDG_Init 1 */
   hiwdg.Instance = IWDG;
   hiwdg.Init.Prescaler = IWDG_PRESCALER_4;
-  hiwdg.Init.Window = 4095;
-  hiwdg.Init.Reload = 4095;
+  hiwdg.Init.Window = 128;
+  hiwdg.Init.Reload = 128;
   if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
   {
     Error_Handler();
@@ -305,6 +529,57 @@ static void MX_SPI2_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 48-1;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 0xFFFFFFFF;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  htim2.Init.Prescaler = (HAL_RCC_GetPCLK1Freq() / 1000000) -1;
+  htim2.Init.Period = DelayMask;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
   * @brief TIM3 Initialization Function
   * @param None
   * @retval None
@@ -326,7 +601,7 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 48-1;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 1000-1;
+  htim3.Init.Period = 1024-1;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -357,9 +632,97 @@ static void MX_TIM3_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM3_Init 2 */
-
+  htim3.Init.Prescaler = (HAL_RCC_GetPCLK1Freq() / 1000000) -1;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
+
+}
+
+/**
+  * @brief TIM6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM6_Init(void)
+{
+
+  /* USER CODE BEGIN TIM6_Init 0 */
+
+  /* USER CODE END TIM6_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM6_Init 1 */
+
+  /* USER CODE END TIM6_Init 1 */
+  htim6.Instance = TIM6;
+  htim6.Init.Prescaler = 48-1;
+  htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim6.Init.Period = 50-1;
+  htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM6_Init 2 */
+  htim6.Init.Prescaler = (HAL_RCC_GetPCLK1Freq() / 1000000) -1;
+  if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE END TIM6_Init 2 */
+
+}
+
+/**
+  * @brief TIM7 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM7_Init(void)
+{
+
+  /* USER CODE BEGIN TIM7_Init 0 */
+
+  /* USER CODE END TIM7_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM7_Init 1 */
+
+  /* USER CODE END TIM7_Init 1 */
+  htim7.Instance = TIM7;
+  htim7.Init.Prescaler = 48-1;
+  htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim7.Init.Period = 1000-1;
+  htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim7) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim7, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM7_Init 2 */
+  htim7.Init.Prescaler = (HAL_RCC_GetPCLK1Freq() / 1000000) -1;
+  if (HAL_TIM_Base_Init(&htim7) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE END TIM7_Init 2 */
 
 }
 
