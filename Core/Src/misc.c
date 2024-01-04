@@ -36,6 +36,8 @@ static uint8_t OutputsDiagBytes[MiscOutsDiagChCount] = {0};
 static uint8_t OutputsDiagnosticStored[MiscOutsDiagChCount] = {0};
 static HAL_StatusTypeDef OutputsAvailability[MiscOutsDiagChCount] = {0};
 
+static union { uint8_t byte; sMotorConfig data; } MotorConfig[MiscMotorDiagChCount] = {0};
+static uint8_t MotorStatusResetRequest[MiscMotorDiagChCount] = {0};
 static uint8_t MotorDiagBytes[MiscMotorDiagChCount] = {0};
 static uint8_t MotorDiagnosticStored[MiscMotorDiagChCount] = {0};
 static HAL_StatusTypeDef MotorAvailability[MiscMotorDiagChCount] = {0};
@@ -110,11 +112,13 @@ static int8_t Motor_Loop(void)
 {
   static uint8_t state = 0;
   static eMiscMotorDiagChannels channel = 0;
-  GPIO_PinState pin;
+  union { uint8_t byte; sMotorConfig data; } config;
 
   do {
     switch(state) {
       case 0:
+        SET_BIT(hspi->Instance->CR1, SPI_CR1_LSBFIRST);
+
         SPI_NSS_MOTOR_OFF();
 
         switch(channel) {
@@ -122,15 +126,20 @@ static int8_t Motor_Loop(void)
           default: channel = 0; continue;
         }
 
-        tx[0] = 0x00;
+        config.byte = MotorConfig[channel].byte;
+        if(MotorStatusResetRequest[channel]) {
+          MotorStatusResetRequest[channel] = 0;
+          config.data.StatusReset = 1;
+        }
+        MotorConfig[channel].data.StatusReset = 0;
+
+        tx[0] = config.byte;
         HAL_SPI_TransmitReceive_IT(hspi, tx, rx, 1);
         state++;
         break;
       case 1:
         if(waitTxRxCplt()) {
           //SPI_NSS_MOTOR_OFF();
-
-          rx[0] = __RBIT(rx[0]) >> 24;
 
           if(MotorDiagnosticStored[channel] == 0) {
             MotorDiagnosticStored[channel] = 1;
@@ -170,6 +179,7 @@ static int8_t Outs_Loop(void)
   do {
     switch(state) {
       case 0:
+        CLEAR_BIT(hspi->Instance->CR1, SPI_CR1_LSBFIRST);
         SPI_NSS_OUTS_OFF();
 
         switch(channel) {
@@ -292,6 +302,30 @@ HAL_StatusTypeDef Misc_Motor_GetDiagnostic(eMiscMotorDiagChannels channel, uint8
   HAL_StatusTypeDef result = MotorAvailability[channel];
   *byte = MotorDiagBytes[channel];
   MotorDiagnosticStored[channel] = 0;
+  return result;
+}
+
+HAL_StatusTypeDef Misc_Motor_SetConfig(eMiscOutsDiagChannels channel, uint8_t byte)
+{
+  HAL_StatusTypeDef result = HAL_OK;
+  MotorConfig[channel].byte = byte;
+  return result;
+}
+
+HAL_StatusTypeDef Misc_Motor_GetConfig(eMiscMotorDiagChannels channel, uint8_t *byte)
+{
+  HAL_StatusTypeDef result = HAL_ERROR;
+  if (byte) {
+    *byte= MotorConfig[channel].byte;
+    result = HAL_OK;
+  }
+  return result;
+}
+
+HAL_StatusTypeDef Misc_Motor_StatusReset(eMiscOutsDiagChannels channel)
+{
+  HAL_StatusTypeDef result = HAL_OK;
+  MotorStatusResetRequest[channel] = 1;
   return result;
 }
 

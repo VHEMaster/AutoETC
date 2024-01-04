@@ -74,10 +74,10 @@ static void etc_throttle_loop(void)
 
   tps1_v = CLAMP(tps1_v, gEtcParams.Tps1Min, gEtcParams.Tps1Limit);
   tps2_v = CLAMP(tps2_v, gEtcParams.Tps2Limit, gEtcParams.Tps2Min);
-  tps1_v_diff = gEtcParams.Tps1Max - gEtcParams.Tps1Mid;
-  tps2_v_diff = gEtcParams.Tps2Mid - gEtcParams.Tps2Max;
+  tps1_v_diff = gEtcParams.Tps1Max - gEtcParams.Tps1Min;
+  tps2_v_diff = gEtcParams.Tps2Min - gEtcParams.Tps2Max;
 
-  tps1_v -= gEtcParams.Tps1Mid;
+  tps1_v -= gEtcParams.Tps1Min;
   tps2_v -= gEtcParams.Tps2Max;
 
   tps1 = tps1_v * 8192 / tps1_v_diff;

@@ -29,6 +29,9 @@ void Misc_TxRxCpltCallback(SPI_HandleTypeDef * _hspi);
 HAL_StatusTypeDef Misc_Init(SPI_HandleTypeDef * _hspi);
 HAL_StatusTypeDef Misc_Outs_GetDiagnostic(eMiscOutsDiagChannels channel, uint8_t *byte);
 HAL_StatusTypeDef Misc_Motor_GetDiagnostic(eMiscMotorDiagChannels channel, uint8_t *byte);
+HAL_StatusTypeDef Misc_Motor_SetConfig(eMiscOutsDiagChannels channel, uint8_t byte);
+HAL_StatusTypeDef Misc_Motor_GetConfig(eMiscMotorDiagChannels channel, uint8_t *byte);
+HAL_StatusTypeDef Misc_Motor_StatusReset(eMiscOutsDiagChannels channel);
 
 HAL_StatusTypeDef Misc_Motor_SetEnable(uint8_t enabled);
 HAL_StatusTypeDef Misc_Motor_SetDir(uint8_t direction);
