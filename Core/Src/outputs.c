@@ -65,8 +65,6 @@ HAL_StatusTypeDef outputs_register(eOutput output, GPIO_TypeDef *port, uint16_t 
 
 inline void outputs_loop(void)
 {
-  uint32_t now = Delay_Tick;
-
   for(int i = 0; i < OutputCount; i++) {
     if(Outputs[i].port && Outputs[i].pin) {
       if(Outputs[i].state == Outputs[i].inverted) {
