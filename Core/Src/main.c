@@ -287,7 +287,7 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_CAN_Init();
-  //MX_IWDG_Init();
+  MX_IWDG_Init();
   MX_SPI1_Init();
   MX_SPI2_Init();
   MX_TIM3_Init();
@@ -336,7 +336,7 @@ int main(void)
 
   etc_init();
 
-  //HAL_IWDG_Refresh(&hiwdg);
+  HAL_IWDG_Refresh(&hiwdg);
 
   HAL_TIM_Base_Start_IT(&htim6);
   HAL_TIM_Base_Start_IT(&htim7);
@@ -349,7 +349,7 @@ int main(void)
   while (1)
   {
     etc_loop();
-    //HAL_IWDG_Refresh(&hiwdg);
+    HAL_IWDG_Refresh(&hiwdg);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -449,8 +449,8 @@ static void MX_IWDG_Init(void)
   /* USER CODE END IWDG_Init 1 */
   hiwdg.Instance = IWDG;
   hiwdg.Init.Prescaler = IWDG_PRESCALER_4;
-  hiwdg.Init.Window = 128;
-  hiwdg.Init.Reload = 128;
+  hiwdg.Init.Window = 512;
+  hiwdg.Init.Reload = 512;
   if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
   {
     Error_Handler();
@@ -645,7 +645,7 @@ static void MX_TIM3_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM3_Init 2 */
-  htim3.Init.Prescaler = (HAL_RCC_GetPCLK1Freq() / 1000000) -1;
+  htim3.Init.Prescaler = (HAL_RCC_GetPCLK1Freq() / 1000000) - 1;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
   {
     Error_Handler();

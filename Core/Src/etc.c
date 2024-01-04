@@ -15,6 +15,8 @@
 #include <string.h>
 #include <stdlib.h>
 
+#define MOTOR_STARTUP_TIME (500 * 1000)
+
 typedef struct {
     uint32_t error_time;
     uint32_t error_last;
@@ -35,8 +37,8 @@ typedef struct {
     }Sensors;
 }sEtcStatus;
 
-static sEtcConfig gEtcParams;
-static const sEtcConfig gEtcParamsDefault = {
+static sEtcConfig gEtcConfig;
+static const sEtcConfig gEtcConfigDefault = {
     .Tps1Min = 500,
     .Tps1Mid = 866,
     .Tps1Max = 4256,
@@ -50,18 +52,17 @@ static const sEtcConfig gEtcParamsDefault = {
     .Pedal2Min = 450,
     .Pedal2Max = 2222,
 
-    .PidP = 2800,
-    .PidI = 4000,
-    .PidD = 43
+    .PidP = 2400,
+    .PidI = 3800,
+    .PidD = 30,
+
+    .TimPsc = 18
 };
 
+static sEtcParametersInt gEtcParameters;
 static sEtcStatus gEtcStatus;
-
-volatile uint16_t pedal;
-volatile int16_t tps;
-volatile uint8_t pwm;
-
 static sMathPid gThrottlePid;
+static uint16_t gEtcTargetPosition;
 
 static HAL_StatusTypeDef etc_error_ctx_handle(sErrorCtx *ctx, uint8_t is_error)
 {
@@ -86,73 +87,110 @@ static HAL_StatusTypeDef etc_error_ctx_handle(sErrorCtx *ctx, uint8_t is_error)
 
 static void etc_throttle_loop(void)
 {
-  HAL_StatusTypeDef etc_status = HAL_OK;
+  static uint32_t startup_time = 0;
+  static uint32_t last = 0;
+  static uint32_t pos_filtered = 0;
   uint32_t now = Delay_Tick;
-  int16_t pedal1, pedal2;
   int16_t pedal1_v, pedal2_v;
-  int16_t pedal1_vv, pedal2_vv;
   uint16_t pedal1_v_diff, pedal2_v_diff;
 
-  pedal1_vv = adc_get_voltage(AdcChPedal1);
-  pedal2_vv = adc_get_voltage(AdcChPedal2);
+  gEtcParameters.AdcPedal1 = adc_get_voltage(AdcChPedal1);
+  gEtcParameters.AdcPedal2 = adc_get_voltage(AdcChPedal2);
 
-  pedal1_v = CLAMP(pedal1_vv, gEtcParams.Pedal1Min, gEtcParams.Pedal1Max);
-  pedal2_v = CLAMP(pedal2_vv, gEtcParams.Pedal2Min, gEtcParams.Pedal2Max);
-  pedal1_v_diff = gEtcParams.Pedal1Max - gEtcParams.Pedal1Min;
-  pedal2_v_diff = gEtcParams.Pedal2Max - gEtcParams.Pedal2Min;
+  pedal1_v = CLAMP(gEtcParameters.AdcPedal1, gEtcConfig.Pedal1Min, gEtcConfig.Pedal1Max);
+  pedal2_v = CLAMP(gEtcParameters.AdcPedal2, gEtcConfig.Pedal2Min, gEtcConfig.Pedal2Max);
+  pedal1_v_diff = gEtcConfig.Pedal1Max - gEtcConfig.Pedal1Min;
+  pedal2_v_diff = gEtcConfig.Pedal2Max - gEtcConfig.Pedal2Min;
 
-  etc_status |= etc_error_ctx_handle(&gEtcStatus.Sensors.Pedal1, abs(pedal1_vv - pedal1_v) > 200);
-  etc_status |= etc_error_ctx_handle(&gEtcStatus.Sensors.Pedal2, abs(pedal2_vv - pedal2_v) > 200);
+  gEtcParameters.PedalError = HAL_OK;
+  gEtcParameters.PedalError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Pedal1, abs(gEtcParameters.AdcPedal1 - pedal1_v) > 200);
+  gEtcParameters.PedalError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Pedal2, abs(gEtcParameters.AdcPedal2 - pedal2_v) > 200);
 
-  pedal1_v -= gEtcParams.Pedal1Min;
-  pedal2_v -= gEtcParams.Pedal2Min;
+  pedal1_v -= gEtcConfig.Pedal1Min;
+  pedal2_v -= gEtcConfig.Pedal2Min;
 
-  pedal1 = pedal1_v * 8192 / pedal1_v_diff;
-  pedal2 = pedal2_v * 8192 / pedal2_v_diff;
+  gEtcParameters.Pedal1 = pedal1_v * 8191 / pedal1_v_diff;
+  gEtcParameters.Pedal2 = pedal2_v * 8191 / pedal2_v_diff;
 
-  pedal = (pedal1 + pedal2) / 2;
+  gEtcParameters.PedalPosition = (gEtcParameters.Pedal1 + gEtcParameters.Pedal2) / 2;
 
-  etc_status |= etc_error_ctx_handle(&gEtcStatus.Sensors.PedalMismatch, abs(pedal1 - pedal2) > 100);
+  gEtcParameters.PedalError |= etc_error_ctx_handle(&gEtcStatus.Sensors.PedalMismatch, abs(gEtcParameters.Pedal1 - gEtcParameters.Pedal2) > 100);
 
 
 
-  int16_t tps1, tps2;
   int16_t tps1_v, tps2_v;
-  int16_t tps1_vv, tps2_vv;
   int16_t tps1_v_diff, tps2_v_diff;
 
-  tps1_vv = adc_get_voltage(AdcChTps1);
-  tps2_vv = adc_get_voltage(AdcChTps2);
+  gEtcParameters.AdcTps1 = adc_get_voltage(AdcChTps1);
+  gEtcParameters.AdcTps2 = adc_get_voltage(AdcChTps2);
 
-  tps1_v = CLAMP(tps1_vv, gEtcParams.Tps1Min, gEtcParams.Tps1Limit);
-  tps2_v = CLAMP(tps2_vv, gEtcParams.Tps2Limit, gEtcParams.Tps2Min);
-  tps1_v_diff = gEtcParams.Tps1Max - gEtcParams.Tps1Min;
-  tps2_v_diff = gEtcParams.Tps2Min - gEtcParams.Tps2Max;
+  tps1_v = CLAMP(gEtcParameters.AdcTps1, gEtcConfig.Tps1Min, gEtcConfig.Tps1Limit);
+  tps2_v = CLAMP(gEtcParameters.AdcTps2, gEtcConfig.Tps2Limit, gEtcConfig.Tps2Min);
+  tps1_v_diff = gEtcConfig.Tps1Max - gEtcConfig.Tps1Min;
+  tps2_v_diff = gEtcConfig.Tps2Min - gEtcConfig.Tps2Max;
 
-  etc_status |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps1, abs(tps1_vv - tps1_v) > 200);
-  etc_status |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps2, abs(tps2_vv - tps2_v) > 200);
+  gEtcParameters.TpsError = HAL_OK;
+  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps1, abs(gEtcParameters.AdcTps1 - tps1_v) > 200);
+  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps2, abs(gEtcParameters.AdcTps2 - tps2_v) > 200);
 
-  tps1_v -= gEtcParams.Tps1Min;
-  tps2_v -= gEtcParams.Tps2Max;
+  tps1_v -= gEtcConfig.Tps1Min;
+  tps2_v -= gEtcConfig.Tps2Max;
 
-  tps1 = tps1_v * 8192 / tps1_v_diff;
-  tps2 = tps2_v * 8192 / tps2_v_diff;
+  gEtcParameters.Tps1 = tps1_v * 8191 / tps1_v_diff;
+  gEtcParameters.Tps2 = tps2_v * 8191 / tps2_v_diff;
 
-  tps2 = 8192 - tps2;
+  gEtcParameters.Tps2 = 8191 - gEtcParameters.Tps2;
 
-  tps = (tps1 + tps2) / 2;
+  gEtcParameters.ThrottlePosition = (gEtcParameters.Tps1 + gEtcParameters.Tps2) / 2;
 
-  etc_status |= etc_error_ctx_handle(&gEtcStatus.Sensors.TpsMismatch, abs(tps1 - tps2) > 100);
+  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.TpsMismatch, abs(gEtcParameters.Tps1 - gEtcParameters.Tps2) > 100);
 
+  gEtcParameters.MotorError = outputs_get_diagnostic(&gEtcStatus.Outputs);
+  if(gEtcStatus.Outputs.Motor.Availability != HAL_OK) {
+    gEtcParameters.MotorError = HAL_ERROR;
+  } else if(gEtcStatus.Outputs.Motor.Diagnostic.Data.ErrorFlag) {
+    gEtcParameters.MotorError = HAL_ERROR;
+  }
+  gEtcParameters.MotorDiagByte = gEtcStatus.Outputs.Motor.Diagnostic.Byte;
+  gEtcParameters.OutsDiagByte = gEtcStatus.Outputs.Outs.Diagnostic.Byte;
+
+  uint8_t pwm;
   int16_t pid;
-  if(etc_status == HAL_OK) {
-    math_pid_set_koffs(&gThrottlePid, gEtcParams.PidP * 0.0001f, gEtcParams.PidI * 0.0001f, gEtcParams.PidD * 0.0001f);
-    math_pid_set_target(&gThrottlePid, pedal);
-    pid = math_pid_update(&gThrottlePid, tps, now);
 
-    if(tps <= 0) {
+  if(last == 0) {
+    last = now;
+  }
+
+  if(gEtcParameters.DefaultPosition == 0) {
+    startup_time += DelayDiff(now, last);
+    if (startup_time >= MOTOR_STARTUP_TIME) {
+      gEtcParameters.DefaultPosition = gEtcParameters.ThrottlePosition;
+      gEtcTargetPosition = gEtcParameters.DefaultPosition;
+      pos_filtered = gEtcTargetPosition;
+    }
+  }
+
+  if(gEtcParameters.CommError != HAL_OK) {
+    gEtcTargetPosition = gEtcParameters.DefaultPosition;
+    if(gEtcParameters.DefaultPosition + gEtcParameters.PedalPosition < 8191) {
+      gEtcParameters.TargetPosition = gEtcParameters.DefaultPosition + gEtcParameters.PedalPosition;
+    }
+  } else {
+    gEtcParameters.TargetPosition = gEtcTargetPosition;
+  }
+
+  gEtcParameters.TargetPosition = CLAMP(gEtcParameters.TargetPosition, 0, 8191);
+
+  pos_filtered = (gEtcParameters.TargetPosition * 1000 + pos_filtered * 9000) / 10000;
+
+  if(gEtcParameters.TpsError == HAL_OK && gEtcParameters.PedalError == HAL_OK && gEtcParameters.DefaultPosition != 0) {
+    math_pid_set_koffs(&gThrottlePid, gEtcConfig.PidP * 0.0001f, gEtcConfig.PidI * 0.0001f, gEtcConfig.PidD * 0.0001f);
+    math_pid_set_target(&gThrottlePid, pos_filtered);
+    pid = math_pid_update(&gThrottlePid, gEtcParameters.ThrottlePosition, now);
+
+    if(gEtcParameters.ThrottlePosition <= 0) {
       math_pid_set_clamp(&gThrottlePid, -60.0f, 255.0f);
-    } else if(tps >= 8192) {
+    } else if(gEtcParameters.ThrottlePosition >= 8191) {
       math_pid_set_clamp(&gThrottlePid, -200.0f, 60.0f);
     } else {
       math_pid_set_clamp(&gThrottlePid, -200.0f, 255.0f);
@@ -168,6 +206,7 @@ static void etc_throttle_loop(void)
 
     Misc_Motor_SetPwm(pwm);
     Misc_Motor_SetEnable(1);
+    TIM3->PSC = gEtcConfig.TimPsc;
   } else {
     Misc_Motor_SetEnable(0);
     Misc_Motor_SetDir(0);
@@ -190,7 +229,8 @@ void etc_init(void)
 {
   uint32_t now = Delay_Tick;
 
-  memcpy(&gEtcParams, &gEtcParamsDefault, sizeof(sEtcConfig));
+  memcpy(&gEtcConfig, &gEtcConfigDefault, sizeof(sEtcConfig));
+  memset(&gEtcParameters, 0, sizeof(sEtcParametersInt));
   memset(&gEtcStatus, 0, sizeof(gEtcStatus));
 
   Misc_Motor_SetEnable(0);
@@ -198,8 +238,10 @@ void etc_init(void)
   Misc_Motor_SetPwm(0);
 
   math_pid_init(&gThrottlePid);
-  math_pid_set_koffs(&gThrottlePid, gEtcParams.PidP * 0.0001f, gEtcParams.PidI * 0.0001f, gEtcParams.PidD * 0.0001f);
+  math_pid_set_koffs(&gThrottlePid, gEtcConfig.PidP * 0.0001f, gEtcConfig.PidI * 0.0001f, gEtcConfig.PidD * 0.0001f);
   math_pid_set_clamp(&gThrottlePid, -200.0f, 255.0f);
+  math_pid_set_integral_clamp(&gThrottlePid, -50.0f, 50.0f);
+
   math_pid_reset(&gThrottlePid, now);
 
   gEtcStatus.Sensors.Pedal1.confirm_time = 10000;
@@ -208,9 +250,10 @@ void etc_init(void)
   gEtcStatus.Sensors.Tps2.confirm_time = 10000;
   gEtcStatus.Sensors.PedalMismatch.confirm_time = 100000;
   gEtcStatus.Sensors.TpsMismatch.confirm_time = 100000;
+
+  gEtcParameters.CommError = HAL_ERROR;
 }
 
 void etc_loop(void)
 {
-  outputs_get_diagnostic(&gEtcStatus.Outputs);
 }

@@ -9,6 +9,8 @@
 #define PID_H_
 
 typedef struct {
+    float IntegralClampFrom;
+    float IntegralClampTo;
     float ClampFrom;
     float ClampTo;
     float Kp;
@@ -28,6 +30,7 @@ void math_pid_reset(sMathPid *pid, unsigned int time);
 void math_pid_set_target(sMathPid *pid, float target);
 void math_pid_set_koffs(sMathPid *pid, float Kp, float Ki, float Kd);
 void math_pid_set_clamp(sMathPid *pid, float from, float to);
+void math_pid_set_integral_clamp(sMathPid *pid, float from, float to);
 void math_pid_init(sMathPid *pid);
 
 float math_pid_update(sMathPid *pid, float input, unsigned int time);

@@ -41,11 +41,19 @@ INLINE void math_pid_set_clamp(sMathPid *pid, float from, float to)
   pid->ClampTo = to;
 }
 
+INLINE void math_pid_set_integral_clamp(sMathPid *pid, float from, float to)
+{
+  pid->IntegralClampFrom = from;
+  pid->IntegralClampTo = to;
+}
+
 INLINE void math_pid_init(sMathPid *pid)
 {
   memset(pid, 0, sizeof(sMathPid));
   pid->ClampFrom = FLT_MIN;
   pid->ClampTo = FLT_MAX;
+  pid->IntegralClampFrom = FLT_MIN;
+  pid->IntegralClampTo = FLT_MAX;
 }
 
 INLINE float math_pid_update(sMathPid *pid, float input, unsigned int time)
@@ -64,7 +72,7 @@ INLINE float math_pid_update(sMathPid *pid, float input, unsigned int time)
   I += error * dtf * pid->Ki;
   D = -(input - pid->Current) / dtf * pid->Kd;
 
-  I = CLAMP(I, pid->ClampFrom, pid->ClampTo);
+  I = CLAMP(I, pid->IntegralClampFrom, pid->IntegralClampTo);
 
   pid->P = P;
   pid->I = I;
