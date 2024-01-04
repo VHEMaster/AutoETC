@@ -43,6 +43,9 @@ static HAL_StatusTypeDef MotorAvailability[MiscMotorDiagChCount] = {0};
 volatile uint8_t nss_motor_off = 0;
 volatile uint8_t nss_outs_off = 0;
 
+static volatile uint32_t *gEtcPwmPeriod;
+static volatile uint32_t *gEtcPwmPulse;
+
 STATIC_INLINE void Misc_CpltNssCheck(void)
 {
   if(nss_motor_off) {
@@ -105,7 +108,56 @@ static void Motor_CriticalLoop(void)
 
 static int8_t Motor_Loop(void)
 {
-  return 1;
+  static uint8_t state = 0;
+  static eMiscMotorDiagChannels channel = 0;
+  GPIO_PinState pin;
+
+  do {
+    switch(state) {
+      case 0:
+        SPI_NSS_MOTOR_OFF();
+
+        switch(channel) {
+          case MiscMotorDiagCh1: SPI_NSS_MOTOR_ON(); nss_motor_off = 1; break;
+          default: channel = 0; continue;
+        }
+
+        tx[0] = 0x00;
+        HAL_SPI_TransmitReceive_IT(hspi, tx, rx, 1);
+        state++;
+        break;
+      case 1:
+        if(waitTxRxCplt()) {
+          //SPI_NSS_MOTOR_OFF();
+
+          rx[0] = __RBIT(rx[0]) >> 24;
+
+          if(MotorDiagnosticStored[channel] == 0) {
+            MotorDiagnosticStored[channel] = 1;
+            MotorDiagBytes[channel] = rx[0];
+          } else {
+            MotorDiagBytes[channel] |= rx[0];
+          }
+
+          if(rx[0] == 0xFF || rx[0] == 0x00)
+            MotorAvailability[channel] = HAL_ERROR;
+          else MotorAvailability[channel] = HAL_OK;
+
+          state = 0;
+          if(++channel >= MiscMotorDiagChCount) {
+            channel = 0;
+            return 1;
+          }
+          else continue;
+        }
+        break;
+      default:
+        state = 0;
+        break;
+    }
+  } while(0);
+
+  return 0;
 }
 
 static int8_t Outs_Loop(void)
@@ -214,6 +266,11 @@ HAL_StatusTypeDef Misc_Init(SPI_HandleTypeDef * _hspi)
 
   hspi = _hspi;
 
+  HAL_GPIO_WritePin(SPI2_NRST_GPIO_Port, SPI2_NRST_Pin, GPIO_PIN_SET);
+
+  gEtcPwmPeriod = &TIM3->ARR;
+  gEtcPwmPulse = &TIM3->CCR2;
+
   for(int i = 0; i < MiscOutsDiagChCount; i++)
     OutputsDiagBytes[i] = 0xFF;
   for(int i = 0; i < MiscMotorDiagChCount; i++)
@@ -233,7 +290,36 @@ HAL_StatusTypeDef Misc_Outs_GetDiagnostic(eMiscOutsDiagChannels channel, uint8_t
 HAL_StatusTypeDef Misc_Motor_GetDiagnostic(eMiscMotorDiagChannels channel, uint8_t *byte)
 {
   HAL_StatusTypeDef result = MotorAvailability[channel];
-  *byte = MotorDiagBytes[channel] ^ 0xFF;
+  *byte = MotorDiagBytes[channel];
   MotorDiagnosticStored[channel] = 0;
+  return result;
+}
+
+HAL_StatusTypeDef Misc_Motor_SetEnable(uint8_t enabled)
+{
+  HAL_StatusTypeDef result = HAL_OK;
+
+  HAL_GPIO_WritePin(MOTOR_DIS_GPIO_Port, MOTOR_DIS_Pin, enabled ? GPIO_PIN_RESET : GPIO_PIN_SET);
+
+  return result;
+}
+
+HAL_StatusTypeDef Misc_Motor_SetDir(uint8_t direction)
+{
+  HAL_StatusTypeDef result = HAL_OK;
+
+  HAL_GPIO_WritePin(MOTOR_DIR_GPIO_Port, MOTOR_DIR_Pin, direction ? GPIO_PIN_SET : GPIO_PIN_RESET);
+
+  return result;
+}
+
+HAL_StatusTypeDef Misc_Motor_SetPwm(uint8_t pwm)
+{
+  HAL_StatusTypeDef result = HAL_OK;
+
+  if (gEtcPwmPeriod && gEtcPwmPulse) {
+    *gEtcPwmPulse = pwm;
+  }
+
   return result;
 }

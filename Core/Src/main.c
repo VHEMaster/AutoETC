@@ -287,7 +287,7 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_CAN_Init();
-  MX_IWDG_Init();
+  //MX_IWDG_Init();
   MX_SPI1_Init();
   MX_SPI2_Init();
   MX_TIM3_Init();
@@ -303,8 +303,11 @@ int main(void)
   __HAL_DBGMCU_FREEZE_TIM2();
   __HAL_DBGMCU_FREEZE_IWDG();
 
+  __HAL_DBGMCU_UNFREEZE_TIM3();
+
   HAL_PWR_EnableBkUpAccess();
 
+  HAL_GPIO_WritePin(MCU_OUTPUT_EN_GPIO_Port, MCU_OUTPUT_EN_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(MCU_OUTPUT_EN_GPIO_Port, MCU_OUTPUT_EN_Pin, GPIO_PIN_SET);
 
   DelayInit(&htim2);
@@ -316,7 +319,14 @@ int main(void)
 
   //outputs_register(OutFuelPumpRelay, FUEL_PUMP_GPIO_Port, FUEL_PUMP_Pin, 1, GPIO_PIN_SET);
 
-  adc_register(AdcChPowerVoltage,             ADC_RANGE_0P2500, 2.0f, ADC_FILTER_ENABLE);
+  adc_register(AdcChTps1,           ADC_RANGE_0P1250, 1000, ADC_FILTER_ENABLE);
+  adc_register(AdcChTps2,           ADC_RANGE_0P1250, 1000, ADC_FILTER_ENABLE);
+  adc_register(AdcChPedal1,         ADC_RANGE_0P1250, 1000, ADC_FILTER_ENABLE);
+  adc_register(AdcChPedal2,         ADC_RANGE_0P1250, 1000, ADC_FILTER_ENABLE);
+  adc_register(AdcChRsvd5,          ADC_RANGE_0P1250, 1000, ADC_FILTER_ENABLE);
+  adc_register(AdcChRsvd6,          ADC_RANGE_0P1250, 1000, ADC_FILTER_ENABLE);
+  adc_register(AdcChPowerVoltage,   ADC_RANGE_0P2500, 2000, ADC_FILTER_ENABLE);
+  adc_register(AdcChRefVoltage,     ADC_RANGE_0P1250, 2000, ADC_FILTER_ENABLE);
 
   adc_init(&hspi1);
 
@@ -326,7 +336,7 @@ int main(void)
 
   etc_init();
 
-  HAL_IWDG_Refresh(&hiwdg);
+  //HAL_IWDG_Refresh(&hiwdg);
 
   HAL_TIM_Base_Start_IT(&htim6);
   HAL_TIM_Base_Start_IT(&htim7);
@@ -339,7 +349,7 @@ int main(void)
   while (1)
   {
     etc_loop();
-    HAL_IWDG_Refresh(&hiwdg);
+    //HAL_IWDG_Refresh(&hiwdg);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -604,7 +614,7 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 48-1;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 1024-1;
+  htim3.Init.Period = 256-1;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -665,7 +675,7 @@ static void MX_TIM6_Init(void)
   htim6.Instance = TIM6;
   htim6.Init.Prescaler = 48-1;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 50-1;
+  htim6.Init.Period = 100-1;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
   {

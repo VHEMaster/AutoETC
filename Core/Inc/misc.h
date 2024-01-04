@@ -30,6 +30,10 @@ HAL_StatusTypeDef Misc_Init(SPI_HandleTypeDef * _hspi);
 HAL_StatusTypeDef Misc_Outs_GetDiagnostic(eMiscOutsDiagChannels channel, uint8_t *byte);
 HAL_StatusTypeDef Misc_Motor_GetDiagnostic(eMiscMotorDiagChannels channel, uint8_t *byte);
 
+HAL_StatusTypeDef Misc_Motor_SetEnable(uint8_t enabled);
+HAL_StatusTypeDef Misc_Motor_SetDir(uint8_t direction);
+HAL_StatusTypeDef Misc_Motor_SetPwm(uint8_t pwm);
+
 void Misc_Fast_Loop(void);
 void Misc_Loop(void);
 

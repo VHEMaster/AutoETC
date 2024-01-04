@@ -13,8 +13,7 @@
 #define SPI_NSS_ON() HAL_GPIO_WritePin(SPI1_NSS_GPIO_Port, SPI1_NSS_Pin, GPIO_PIN_RESET)
 #define SPI_NSS_OFF() HAL_GPIO_WritePin(SPI1_NSS_GPIO_Port, SPI1_NSS_Pin, GPIO_PIN_SET)
 
-#define ADC_VREF          4.096f
-#define MCU_VREF          3.30f
+#define ADC_VREF          4096
 
 #define ADC_CHANNELS      8
 #define MCU_CHANNELS      0
@@ -25,7 +24,7 @@
 
 static uint16_t AdcBuffer[ADC_CHANNELS][ADC_BUFFER_SIZE] = {{0}};
 static uint16_t AdcDataLast[ADC_CHANNELS] = {0};
-static float AdcVoltages[ADC_CHANNELS];
+static uint16_t AdcVoltages[ADC_CHANNELS];
 static volatile HAL_StatusTypeDef adcInitStatus = HAL_OK;
 static volatile HAL_StatusTypeDef adcTimeoutStatus = HAL_OK;
 static volatile HAL_StatusTypeDef adcStatus = HAL_OK;
@@ -36,9 +35,7 @@ static uint16_t ChData[ADC_CHANNELS] = {0};
 static uint8_t ChRange[ADC_CHANNELS] = {0};
 static uint8_t ChFilter[ADC_CHANNELS] = {0};
 static uint8_t ChIgnoreNext[ADC_CHANNELS] = {0};
-static float ChDivider[ADC_CHANNELS] = {0};
-static float ChLpf[ADC_CHANNELS] = {0};
-static uint8_t ChLpfReset[ADC_CHANNELS] = {0};
+static uint16_t ChDivider[ADC_CHANNELS] = {0};
 
 #ifdef DEBUG
 static volatile uint32_t ChPeriod[ADC_CHANNELS] = {0};
@@ -191,21 +188,13 @@ static HAL_StatusTypeDef SPI_ReadRegister(uint8_t reg, uint8_t *data)
   return status > 0 ? HAL_OK : HAL_ERROR;
 }
 
-static INLINE float ADC_Convert(uint8_t channel, float data)
+static INLINE uint16_t ADC_Convert(uint8_t channel, uint16_t data)
 {
   switch(ChRange[channel]) {
     case ADC_RANGE_0P2500 :
-      return data * 0.0000152587890625f * ADC_VREF * 2.500f;
+      return data * 15259 / 10000 * ADC_VREF / 1000 * 2500 / 100000;
     case ADC_RANGE_0P1250 :
-      return data * 0.0000152587890625f * ADC_VREF * 1.250f;
-    case MCU_RANGE_DIRECT :
-      return data * 0.0000152587890625f * MCU_VREF;
-    case ADC_RANGE_PM2500 :
-      return (data - 32768.0f) * 0.000030517578125f * ADC_VREF * 2.500f;
-    case ADC_RANGE_PM1250 :
-      return (data - 32768.0f) * 0.000030517578125f * ADC_VREF * 1.250f;
-    case ADC_RANGE_PM0625 :
-      return (data - 32768.0f) * 0.000030517578125f * ADC_VREF * 0.625f;
+      return data * 15259 / 10000 * ADC_VREF / 1000 * 1250 / 100000;
     default:
       return 0;
   }
@@ -217,7 +206,6 @@ HAL_StatusTypeDef adc_init(SPI_HandleTypeDef * _hspi)
   uint8_t data;
 
   for(int i = 0; i < ADC_CHANNELS; i++) {
-    ChLpf[i] = 1.0f;
     for(int j = 0; j < ADC_BUFFER_SIZE; j++) {
       AdcBuffer[i][j] = 0x8000;
     }
@@ -319,7 +307,7 @@ ret:
   return result;
 }
 
-HAL_StatusTypeDef adc_register(eAdcChannel channel, uint8_t range, float divider, uint8_t filter)
+HAL_StatusTypeDef adc_register(eAdcChannel channel, uint8_t range, uint16_t divider, uint8_t filter)
 {
   HAL_StatusTypeDef result = HAL_OK;
 
@@ -329,39 +317,8 @@ HAL_StatusTypeDef adc_register(eAdcChannel channel, uint8_t range, float divider
   ChRange[channel] = range;
   ChDivider[channel] = divider;
   ChFilter[channel] = filter;
-  ChLpf[channel] = 1.0f;
 
   return result;
-}
-
-INLINE HAL_StatusTypeDef adc_reset_lpf_state(eAdcChannel channel)
-{
-  if(channel >= ADC_CHANNELS)
-    return HAL_ERROR;
-
-  ChLpfReset[channel] = 1;
-
-  return HAL_OK;
-}
-
-INLINE HAL_StatusTypeDef adc_set_lpf(eAdcChannel channel, float lpf)
-{
-  if(channel >= ADC_CHANNELS || lpf > 1.0f || lpf <= 0.0f)
-    return HAL_ERROR;
-
-  ChLpf[channel] = lpf;
-
-  return HAL_OK;
-}
-
-INLINE HAL_StatusTypeDef adc_get_lpf(eAdcChannel channel, float *p_lpf)
-{
-  if(channel >= ADC_CHANNELS || !p_lpf)
-    return HAL_ERROR;
-
-  *p_lpf = ChLpf[channel];
-
-  return HAL_OK;
 }
 
 ITCM_FUNC HAL_StatusTypeDef adc_fast_loop(void)
@@ -488,16 +445,13 @@ HAL_StatusTypeDef adc_slow_loop(void)
 {
   const uint32_t failed_adc_mask = (1 << ADC_CHANNELS) - 1;
   static HAL_StatusTypeDef result = HAL_OK;
-  static uint32_t last = 0;
   HAL_StatusTypeDef status = HAL_OK;
   uint32_t data;
   uint32_t failed_channels = 0;
   uint32_t now = Delay_Tick;
 
-  float diff, lpf_val, new_val, old_val;;
+  uint16_t new_val;
 
-  diff = DelayDiff(now, last);
-  last = now;
 
   if(adcInitStatus != HAL_OK)
     return adcInitStatus;
@@ -511,16 +465,7 @@ HAL_StatusTypeDef adc_slow_loop(void)
     } else {
       ChData[i] = AdcBuffer[i][0];
     }
-    new_val = ADC_Convert(i, ChData[i]) * ChDivider[i];
-    if(ChLpfReset[i]) {
-      ChLpfReset[i] = 0;
-    } else {
-      if(ChLpf[i] < 1.0f) {
-        lpf_val = (1000.0f / diff) * ChLpf[i] * 1.4142f; // * sqrt(2)
-        old_val = AdcVoltages[i];
-        new_val = new_val * lpf_val + old_val * (1.0f - lpf_val);
-      }
-    }
+    new_val = ADC_Convert(i, ChData[i]) * ChDivider[i] / 1000;
     AdcVoltages[i] = new_val;
 
   }
@@ -544,34 +489,11 @@ HAL_StatusTypeDef adc_slow_loop(void)
   return result;
 }
 
-INLINE float adc_get_voltage(eAdcChannel channel)
+INLINE uint16_t adc_get_voltage(eAdcChannel channel)
 {
   if(channel < ADC_CHANNELS)
     return AdcVoltages[channel];
-  return 0.f;
-}
-
-INLINE float adc_get_voltage_unfiltered(eAdcChannel channel)
-{
-  if(channel < ADC_CHANNELS)
-    return ADC_Convert(channel, AdcDataLast[channel]) * ChDivider[channel];
-  return 0.f;
-}
-
-INLINE float adc_get_voltage_urgent(eAdcChannel channel)
-{
-  uint32_t data = 0;
-  if(channel < ADC_CHANNELS) {
-    if(ChFilter[channel]) {
-      for(int j = 0; j < ADC_BUFFER_SIZE; j++)
-        data += AdcBuffer[channel][j];
-      data /= ADC_BUFFER_SIZE;
-    } else {
-      data = AdcBuffer[channel][0];
-    }
-    return ADC_Convert(channel, data) * ChDivider[channel];
-  }
-  return 0.f;
+  return 0;
 }
 
 HAL_StatusTypeDef adc_get_status(void)
