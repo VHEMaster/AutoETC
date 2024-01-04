@@ -12,6 +12,7 @@
 #include "delay.h"
 #include "pid.h"
 #include "outputs.h"
+#include "can.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -35,6 +36,8 @@ typedef struct {
       sErrorCtx TpsMismatch;
       sErrorCtx PedalMismatch;
     }Sensors;
+    HAL_StatusTypeDef CanInitStatus : 2;
+    HAL_StatusTypeDef CanTestStatus : 2;
 }sEtcStatus;
 
 static sEtcConfig gEtcConfig;
@@ -59,6 +62,7 @@ static const sEtcConfig gEtcConfigDefault = {
     .TimPsc = 18
 };
 
+static uint8_t gCanTestStarted = 0;
 static sEtcParametersInt gEtcParameters;
 static sEtcStatus gEtcStatus;
 static sMathPid gThrottlePid;
@@ -225,6 +229,66 @@ void etc_irq_fast_loop(void)
 
 }
 
+static void ecu_can_init(void)
+{
+  gEtcStatus.CanInitStatus = can_start(0x010, 0x7F0);
+  if(gEtcStatus.CanInitStatus == HAL_OK) {
+    gCanTestStarted = 1;
+  }
+}
+
+static void etc_can_process_message(const sCanRawMessage *message)
+{
+
+}
+
+static void can_signals_send(const sEtcParametersInt *parameters)
+{
+
+}
+
+static void can_signals_update(const sEtcParametersInt *parameters)
+{
+  static uint32_t last = 0;
+  uint32_t now = Delay_Tick;
+
+  if (DelayDiff(now, last) >= 5000) {
+    last = now;
+    can_signals_send(parameters);
+  }
+}
+
+static void etc_can_loop(void)
+{
+  static sCanRawMessage message = {0};
+  int8_t status;
+
+  if(gEtcStatus.CanInitStatus == HAL_OK) {
+    if(gCanTestStarted) {
+      status = can_test();
+      if(status != 0) {
+        gCanTestStarted = 0;
+        gEtcStatus.CanTestStatus = status > 0 ? HAL_OK : HAL_ERROR;
+      }
+    } else {
+      status = can_receive(&message);
+      if(status > 0) {
+        etc_can_process_message(&message);
+      }
+    }
+  }
+}
+
+static void etc_can_process(void)
+{
+  if(gEtcStatus.CanInitStatus == HAL_OK) {
+    if(!gCanTestStarted) {
+      can_signals_update(&gEtcParameters);
+      can_loop();
+    }
+  }
+}
+
 void etc_init(void)
 {
   uint32_t now = Delay_Tick;
@@ -252,8 +316,12 @@ void etc_init(void)
   gEtcStatus.Sensors.TpsMismatch.confirm_time = 100000;
 
   gEtcParameters.CommError = HAL_ERROR;
+
+  ecu_can_init();
 }
 
 void etc_loop(void)
 {
+  etc_can_loop();
+  etc_can_process();
 }

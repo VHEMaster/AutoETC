@@ -115,6 +115,7 @@ int8_t can_test(void)
   hal_status = HAL_CAN_Stop(hcan);
   if(hal_status != HAL_OK)
     return -10;
+
   hcan->Init.Mode = CAN_MODE_LOOPBACK;
   hal_status = HAL_CAN_Init(hcan);
   if(hal_status != HAL_OK)
@@ -126,7 +127,7 @@ int8_t can_test(void)
 
 
   for(int i = 0; i < 10; i++) {
-    txid = 0x100;
+    txid = can_filter.FilterIdHigh >> 5;
     txrtr = CAN_RTR_DATA;
     txlength = 4;
     for(int j = 0; j < txlength; j++)
@@ -136,7 +137,7 @@ int8_t can_test(void)
 
     while((status = can_transmit(txid, txrtr, txlength, txdata, NULL)) == 0) {
       now = Delay_Tick;
-      if(DelayDiff(now, last) > 100000) {
+      if(DelayDiff(now, last) > 50000) {
         status = -20;
         break;
       }
@@ -150,7 +151,7 @@ int8_t can_test(void)
 
       while((status = can_receive(&message)) == 0) {
         now = Delay_Tick;
-        if(DelayDiff(now, last) > 50000) {
+        if(DelayDiff(now, last) > 10000) {
           status = -21;
           break;
         }
