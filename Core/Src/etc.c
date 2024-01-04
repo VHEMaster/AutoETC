@@ -191,9 +191,9 @@ static void etc_throttle_loop(void)
     if(gEtcParameters.ThrottlePosition <= 0) {
       math_pid_set_clamp(&gThrottlePid, -60.0f, 255.0f);
     } else if(gEtcParameters.ThrottlePosition >= 8191) {
-      math_pid_set_clamp(&gThrottlePid, -200.0f, 60.0f);
+      math_pid_set_clamp(&gThrottlePid, -160.0f, 60.0f);
     } else {
-      math_pid_set_clamp(&gThrottlePid, -200.0f, 255.0f);
+      math_pid_set_clamp(&gThrottlePid, -160.0f, 255.0f);
     }
 
     if(pid >= 0) {
