@@ -322,7 +322,7 @@ HAL_StatusTypeDef Misc_Motor_GetConfig(eMiscMotorDiagChannels channel, uint8_t *
   return result;
 }
 
-HAL_StatusTypeDef Misc_Motor_StatusReset(eMiscOutsDiagChannels channel)
+HAL_StatusTypeDef Misc_Motor_StatusReset(eMiscMotorDiagChannels channel)
 {
   HAL_StatusTypeDef result = HAL_OK;
   MotorStatusResetRequest[channel] = 1;
