@@ -12,7 +12,10 @@
 #include "delay.h"
 #include "pid.h"
 #include "outputs.h"
+#include "sensors.h"
 #include "can.h"
+#include "can_signals.h"
+#include "can_signals_db.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -38,16 +41,15 @@ typedef struct {
     }Sensors;
     HAL_StatusTypeDef CanInitStatus : 2;
     HAL_StatusTypeDef CanTestStatus : 2;
+    HAL_StatusTypeDef AdcStatus : 2;
 }sEtcStatus;
 
 static sEtcConfig gEtcConfig;
 static const sEtcConfig gEtcConfigDefault = {
     .Tps1Min = 500,
-    .Tps1Mid = 866,
     .Tps1Max = 4256,
     .Tps1Limit = 4649,
     .Tps2Min = 4481,
-    .Tps2Mid = 4110,
     .Tps2Max = 723,
     .Tps2Limit = 324,
     .Pedal1Min = 860,
@@ -98,8 +100,14 @@ static void etc_throttle_loop(void)
   int16_t pedal1_v, pedal2_v;
   uint16_t pedal1_v_diff, pedal2_v_diff;
 
+  gEtcParameters.AdcTps1 = adc_get_voltage(AdcChTps1);
+  gEtcParameters.AdcTps2 = adc_get_voltage(AdcChTps2);
   gEtcParameters.AdcPedal1 = adc_get_voltage(AdcChPedal1);
   gEtcParameters.AdcPedal2 = adc_get_voltage(AdcChPedal2);
+  gEtcParameters.AdcRsvd5 = adc_get_voltage(AdcChRsvd5);
+  gEtcParameters.AdcRsvd6 = adc_get_voltage(AdcChRsvd6);
+  gEtcParameters.AdcReferenceVoltage = adc_get_voltage(AdcChRefVoltage);
+  gEtcParameters.AdcPowerVoltage = adc_get_voltage(AdcChPowerVoltage);
 
   pedal1_v = CLAMP(gEtcParameters.AdcPedal1, gEtcConfig.Pedal1Min, gEtcConfig.Pedal1Max);
   pedal2_v = CLAMP(gEtcParameters.AdcPedal2, gEtcConfig.Pedal2Min, gEtcConfig.Pedal2Max);
@@ -124,9 +132,6 @@ static void etc_throttle_loop(void)
 
   int16_t tps1_v, tps2_v;
   int16_t tps1_v_diff, tps2_v_diff;
-
-  gEtcParameters.AdcTps1 = adc_get_voltage(AdcChTps1);
-  gEtcParameters.AdcTps2 = adc_get_voltage(AdcChTps2);
 
   tps1_v = CLAMP(gEtcParameters.AdcTps1, gEtcConfig.Tps1Min, gEtcConfig.Tps1Limit);
   tps2_v = CLAMP(gEtcParameters.AdcTps2, gEtcConfig.Tps2Limit, gEtcConfig.Tps2Min);
@@ -231,30 +236,120 @@ void etc_irq_fast_loop(void)
 
 static void ecu_can_init(void)
 {
-  gEtcStatus.CanInitStatus = can_start(0x010, 0x7F0);
+  gEtcStatus.CanInitStatus = can_start(0x080, 0x7F0);
   if(gEtcStatus.CanInitStatus == HAL_OK) {
     gCanTestStarted = 1;
   }
+
+  can_message_register_msg(&g_can_message_id080_ECU_ETC);
+  can_message_register_msg(&g_can_message_id088_ECU_ETC);
+  can_message_register_msg(&g_can_message_id089_ECU_ETC);
+  can_message_register_msg(&g_can_message_id08A_ECU_ETC);
+  can_message_register_msg(&g_can_message_id08B_ECU_ETC);
+  can_message_register_msg(&g_can_message_id08C_ECU_ETC);
 }
 
 static void etc_can_process_message(const sCanRawMessage *message)
 {
+  sCanMessage * can_msg = can_message_get_msg(message);
 
+  if(can_msg != NULL) {
+
+  }
 }
 
-static void can_signals_send(const sEtcParametersInt *parameters)
+static void can_signals_fast_send(const sEtcParametersInt *parameters)
 {
+  can_signal_message_clear(&g_can_message_id012_ETC);
+  can_signal_append_raw(&g_can_message_id012_ETC, &g_can_signal_id012_ETC_ThrottlePosition, parameters->ThrottlePosition * 100000 / 119998);
+  can_signal_append_raw(&g_can_message_id012_ETC, &g_can_signal_id012_ETC_TargetPosition, parameters->TargetPosition * 100000 / 119998);
+  can_signal_append_raw(&g_can_message_id012_ETC, &g_can_signal_id012_ETC_DefaultPosition, parameters->DefaultPosition * 100000 / 119998);
+  can_signal_append_raw(&g_can_message_id012_ETC, &g_can_signal_id012_ETC_PedalPosition, parameters->PedalPosition);
+  can_signal_append_raw(&g_can_message_id012_ETC, &g_can_signal_id012_ETC_Tps1ErrorFlag, gEtcStatus.Sensors.Tps1.status != HAL_OK);
+  can_signal_append_raw(&g_can_message_id012_ETC, &g_can_signal_id012_ETC_Tps2ErrorFlag, gEtcStatus.Sensors.Tps2.status != HAL_OK);
+  can_signal_append_raw(&g_can_message_id012_ETC, &g_can_signal_id012_ETC_Pedal1ErrorFlag, gEtcStatus.Sensors.Pedal1.status != HAL_OK);
+  can_signal_append_raw(&g_can_message_id012_ETC, &g_can_signal_id012_ETC_Pedal2ErrorFlag, gEtcStatus.Sensors.Pedal2.status != HAL_OK);
+  can_signal_append_raw(&g_can_message_id012_ETC, &g_can_signal_id012_ETC_TpsMismatchFlag, gEtcStatus.Sensors.TpsMismatch.status != HAL_OK);
+  can_signal_append_raw(&g_can_message_id012_ETC, &g_can_signal_id012_ETC_PedalMismatchFlag, gEtcStatus.Sensors.PedalMismatch.status != HAL_OK);
+  can_signal_append_raw(&g_can_message_id012_ETC, &g_can_signal_id012_ETC_MotorErrorFlag, parameters->MotorError != HAL_OK);
+  can_signal_append_raw(&g_can_message_id012_ETC, &g_can_signal_id012_ETC_StandaloneFlag, parameters->StandaloneMode);
 
+  can_message_send(&g_can_message_id012_ETC);
+}
+
+static void can_signals_mid_send(const sEtcParametersInt *parameters)
+{
+  can_signal_message_clear(&g_can_message_id010_ETC);
+  can_signal_append_raw(&g_can_message_id010_ETC, &g_can_signal_id010_ETC_Tps1, parameters->AdcTps1 * 109225 / 10000);
+  can_signal_append_raw(&g_can_message_id010_ETC, &g_can_signal_id010_ETC_Tps2, parameters->AdcTps2 * 109225 / 10000);
+  can_signal_append_raw(&g_can_message_id010_ETC, &g_can_signal_id010_ETC_Pedal1, parameters->AdcPedal1 * 109225 / 10000);
+  can_signal_append_raw(&g_can_message_id010_ETC, &g_can_signal_id010_ETC_Pedal2, parameters->AdcPedal2 * 109225 / 10000);
+
+  can_signal_message_clear(&g_can_message_id011_ETC);
+  can_signal_append_raw(&g_can_message_id010_ETC, &g_can_signal_id011_ETC_Rsvd5, parameters->AdcRsvd5 * 109225 / 10000);
+  can_signal_append_raw(&g_can_message_id010_ETC, &g_can_signal_id011_ETC_Rsvd6, parameters->AdcRsvd6 * 109225 / 10000);
+  can_signal_append_raw(&g_can_message_id010_ETC, &g_can_signal_id011_ETC_ReferenceVoltage, parameters->AdcReferenceVoltage * 109225 / 10000);
+  can_signal_append_raw(&g_can_message_id010_ETC, &g_can_signal_id011_ETC_PowerVoltage, parameters->AdcPowerVoltage * 32125 / 10000);
+
+  can_message_send(&g_can_message_id010_ETC);
+  can_message_send(&g_can_message_id011_ETC);
+}
+
+static void can_signals_slow_send(const sEtcParametersInt *parameters)
+{
+  can_signal_message_clear(&g_can_message_id013_ETC);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_InCruizeStart, sens_get_digital(SensorDigitalCruizeStart, NULL));
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_InCruizeStop, sens_get_digital(SensorDigitalCruizeStop, NULL));
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_InBrake, sens_get_digital(SensorDigitalBrake, NULL));
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_InRsvd4, sens_get_digital(SensorDigitalRsvd4, NULL));
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_InRsvd5, sens_get_digital(SensorDigitalRsvd5, NULL));
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_InRsvd6, sens_get_digital(SensorDigitalRsvd6, NULL));
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_OutCruizeG, out_get_state(OutCruizeG, NULL));
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_OutCruizeR, out_get_state(OutCruizeR, NULL));
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_OutRsvd3, out_get_state(OutRsvd3, NULL));
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_OutRsvd4, out_get_state(OutRsvd4, NULL));
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_OutCruizeGState, gEtcStatus.Outputs.Outs.Diagnostic.Data.Out1);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_OutCruizeRState, gEtcStatus.Outputs.Outs.Diagnostic.Data.Out2);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_OutRsvd3State, gEtcStatus.Outputs.Outs.Diagnostic.Data.Out3);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_OutRsvd4State, gEtcStatus.Outputs.Outs.Diagnostic.Data.Out4);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_OutputsAvailability, gEtcStatus.Outputs.Outs.Availability != HAL_OK);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_MotorErrorFlag, gEtcStatus.Outputs.Motor.Diagnostic.Data.ErrorFlag);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_MotorTemperature, gEtcStatus.Outputs.Motor.Diagnostic.Data.Temperature);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_MotorOpenLoad, gEtcStatus.Outputs.Motor.Diagnostic.Data.OpenLoad);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_MotorShortToGND, gEtcStatus.Outputs.Motor.Diagnostic.Data.ShortToGND);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_MotorShortToSupply, gEtcStatus.Outputs.Motor.Diagnostic.Data.ShortToSupply);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_MotorSupplyFailure, gEtcStatus.Outputs.Motor.Diagnostic.Data.SupplyFailure);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_MotorAlwaysHigh, gEtcStatus.Outputs.Motor.Diagnostic.Data.AlwaysHigh);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_MotorAvailability, gEtcStatus.Outputs.Motor.Availability != HAL_OK);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_AdcErrorFlag, gEtcStatus.AdcStatus != HAL_OK);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_CommErrorFlag, gEtcParameters.CommError != HAL_OK);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_CanInitFlag, gEtcStatus.CanInitStatus != HAL_OK);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_CanTestFlag, gEtcStatus.CanTestStatus != HAL_OK);
+  can_signal_append_raw(&g_can_message_id013_ETC, &g_can_signal_id013_ETC_AdaptationCompletedFlag, 0);
+
+  can_message_send(&g_can_message_id013_ETC);
 }
 
 static void can_signals_update(const sEtcParametersInt *parameters)
 {
-  static uint32_t last = 0;
+  static uint32_t last_fast = 0;
+  static uint32_t last_mid = 0;
+  static uint32_t last_slow = 0;
   uint32_t now = Delay_Tick;
 
-  if (DelayDiff(now, last) >= 5000) {
-    last = now;
-    can_signals_send(parameters);
+  if (DelayDiff(now, last_fast) >= 5000) {
+    last_fast = now;
+    can_signals_fast_send(parameters);
+  }
+
+  if (DelayDiff(now, last_mid) >= 20000) {
+    last_mid = now;
+    can_signals_mid_send(parameters);
+  }
+
+  if (DelayDiff(now, last_slow) >= 100000) {
+    last_slow = now;
+    can_signals_slow_send(parameters);
   }
 }
 
@@ -324,4 +419,6 @@ void etc_loop(void)
 {
   etc_can_loop();
   etc_can_process();
+
+  gEtcStatus.AdcStatus = adc_get_status();
 }

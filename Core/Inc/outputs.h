@@ -12,12 +12,10 @@
 #include "structs.h"
 
 typedef enum {
-  OutFuelPumpRelay,
-  OutCheckEngine,
-  OutFanRelay,
-  OutStarterRelay,
-  OutFanSwitch,
-  OutIgn,
+  OutCruizeG = 0,
+  OutCruizeR,
+  OutRsvd3,
+  OutRsvd4,
   OutputCount
 }eOutput;
 

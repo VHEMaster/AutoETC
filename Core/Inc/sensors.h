@@ -12,7 +12,12 @@
 #include "misc.h"
 
 typedef enum {
-  SensorOilPressure = 0,
+  SensorDigitalCruizeStart = 0,
+  SensorDigitalCruizeStop,
+  SensorDigitalBrake,
+  SensorDigitalRsvd4,
+  SensorDigitalRsvd5,
+  SensorDigitalRsvd6,
   SensorDigitalCount
 }eDigitalSensor;
 

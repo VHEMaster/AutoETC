@@ -315,9 +315,17 @@ int main(void)
   sensors_init();
   outputs_init();
 
-  //sensors_register_digital(SensorOilPressure, SENS_OIL_GPIO_Port, SENS_OIL_Pin, 1);
+  sensors_register_digital(SensorDigitalCruizeStart, INPUT_CRUIZE_START_GPIO_Port, INPUT_CRUIZE_START_Pin, 0);
+  sensors_register_digital(SensorDigitalCruizeStop, INPUT_CRUIZE_STOP_GPIO_Port, INPUT_CRUIZE_STOP_Pin, 0);
+  sensors_register_digital(SensorDigitalBrake, INPUT_BRAKE_GPIO_Port, INPUT_BRAKE_Pin, 0);
+  sensors_register_digital(SensorDigitalRsvd4, INPUT_RSVD4_GPIO_Port, INPUT_RSVD4_Pin, 0);
+  sensors_register_digital(SensorDigitalRsvd5, INPUT_RSVD5_GPIO_Port, INPUT_RSVD5_Pin, 0);
+  sensors_register_digital(SensorDigitalRsvd6, INPUT_RSVD6_GPIO_Port, INPUT_RSVD6_Pin, 0);
 
-  //outputs_register(OutFuelPumpRelay, FUEL_PUMP_GPIO_Port, FUEL_PUMP_Pin, 1, GPIO_PIN_SET);
+  outputs_register(OutCruizeG, OUTPUT_CRUIZE_G_GPIO_Port, OUTPUT_CRUIZE_G_Pin, 1, GPIO_PIN_RESET);
+  outputs_register(OutCruizeR, OUTPUT_CRUIZE_R_GPIO_Port, OUTPUT_CRUIZE_R_Pin, 1, GPIO_PIN_RESET);
+  outputs_register(OutRsvd3, OUTPUT_RSVD3_GPIO_Port, OUTPUT_RSVD3_Pin, 1, GPIO_PIN_RESET);
+  outputs_register(OutRsvd4, OUTPUT_RSVD4_GPIO_Port, OUTPUT_RSVD4_Pin, 1, GPIO_PIN_RESET);
 
   adc_register(AdcChTps1,           ADC_RANGE_0P1250, 1000, ADC_FILTER_ENABLE);
   adc_register(AdcChTps2,           ADC_RANGE_0P1250, 1000, ADC_FILTER_ENABLE);
@@ -789,7 +797,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : INPUT_CRUIZE_START_Pin */
   GPIO_InitStruct.Pin = INPUT_CRUIZE_START_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(INPUT_CRUIZE_START_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : OUTPUT_CRUIZE_G_Pin OUTPUT_CRUIZE_R_Pin OUTPUT_RSVD3_Pin OUTPUT_RSVD4_Pin
@@ -826,7 +834,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pins : INPUT_RSVD6_Pin INPUT_RSVD5_Pin INPUT_RSVD4_Pin */
   GPIO_InitStruct.Pin = INPUT_RSVD6_Pin|INPUT_RSVD5_Pin|INPUT_RSVD4_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : CAN_LBK_Pin */
@@ -839,7 +847,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pins : INPUT_BRAKE_Pin INPUT_CRUIZE_STOP_Pin */
   GPIO_InitStruct.Pin = INPUT_BRAKE_Pin|INPUT_CRUIZE_STOP_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 }

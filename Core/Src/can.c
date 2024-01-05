@@ -172,6 +172,7 @@ int8_t can_test(void)
   if(hal_status != HAL_OK)
     return -13;
   hcan->Init.Mode = CAN_MODE_NORMAL;
+  hcan->Init.Mode = CAN_MODE_LOOPBACK;
   hal_status = HAL_CAN_Init(hcan);
   if(hal_status != HAL_OK)
     return -14;
