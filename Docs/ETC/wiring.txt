@@ -1,0 +1,25 @@
+DBG
+GND - чёрный
+SWCLK - белый
+SWDIO - синий
+
+PWR
+GND - чёрный
+IGN - оранжевый
+STBY - коричневый
+
+I/O
+Cruize Start - жёлтый
+Cruize Stop - жёлтый зелёный
+Brake - оранжевый
+Cruize Red - красный
+Cruize Green - зелёный
+
+RSVD
+IN RSVD 4 - синий
+IN RSVD 5 - жёлтый 
+IN RSVD 6 - зелёный
+OUT RSVD 3 - коричневый
+OUT RSVD 4 - чёрный
+SENS RSVD 5 - белый
+SENS RSVD 6 -  серый
