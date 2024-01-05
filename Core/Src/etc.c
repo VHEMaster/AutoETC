@@ -189,6 +189,9 @@ static void etc_throttle_loop(void)
 
   if(gEtcParameters.CommError != HAL_OK) {
     gEtcParameters.StandaloneMode = 1;
+    gEtcParameters.MotorActive = 1;
+    gEtcParameters.FullCloseRequest = 0;
+    gEtcParameters.AdaptationProcess = 0;
   }
 
   if(gEtcParameters.CommError != HAL_OK || gEtcParameters.StandaloneMode) {
@@ -204,17 +207,22 @@ static void etc_throttle_loop(void)
 
   pos_filtered = (gEtcParameters.TargetPosition * 1000 + pos_filtered * 9000) / 10000;
 
-  if(gEtcParameters.TpsError == HAL_OK && (gEtcParameters.PedalError == HAL_OK || !gEtcParameters.StandaloneMode) && gEtcParameters.DefaultPosition != 0) {
+  if(gEtcParameters.MotorActive && gEtcParameters.TpsError == HAL_OK && (gEtcParameters.PedalError == HAL_OK || !gEtcParameters.StandaloneMode) && gEtcParameters.DefaultPosition != 0) {
     math_pid_set_koffs(&gThrottlePid, gEtcConfig.PidP * 0.0001f, gEtcConfig.PidI * 0.0001f, gEtcConfig.PidD * 0.0001f);
     math_pid_set_target(&gThrottlePid, pos_filtered);
-    pid = math_pid_update(&gThrottlePid, gEtcParameters.ThrottlePosition, now);
 
-    if(gEtcParameters.ThrottlePosition <= 0) {
-      math_pid_set_clamp(&gThrottlePid, -60.0f, 255.0f);
-    } else if(gEtcParameters.ThrottlePosition >= 8191) {
-      math_pid_set_clamp(&gThrottlePid, -160.0f, 60.0f);
+    if(gEtcParameters.FullCloseRequest) {
+      pid = -100;
     } else {
-      math_pid_set_clamp(&gThrottlePid, -160.0f, 255.0f);
+      pid = math_pid_update(&gThrottlePid, gEtcParameters.ThrottlePosition, now);
+
+      if(gEtcParameters.ThrottlePosition <= 0) {
+        math_pid_set_clamp(&gThrottlePid, -60.0f, 255.0f);
+      } else if(gEtcParameters.ThrottlePosition >= 8191) {
+        math_pid_set_clamp(&gThrottlePid, -160.0f, 60.0f);
+      } else {
+        math_pid_set_clamp(&gThrottlePid, -160.0f, 255.0f);
+      }
     }
 
     if(pid >= 0) {
@@ -227,6 +235,7 @@ static void etc_throttle_loop(void)
 
     Misc_Motor_SetPwm(pwm);
     Misc_Motor_SetEnable(1);
+
     TIM3->PSC = gEtcConfig.TimPsc;
   } else {
     Misc_Motor_SetEnable(0);
