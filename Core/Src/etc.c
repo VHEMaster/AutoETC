@@ -125,10 +125,13 @@ static void etc_throttle_loop(void)
   gEtcParameters.Pedal1 = pedal1_v * 8191 / pedal1_v_diff;
   gEtcParameters.Pedal2 = pedal2_v * 8191 / pedal2_v_diff;
 
-  gEtcParameters.PedalPosition = (gEtcParameters.Pedal1 + gEtcParameters.Pedal2) / 2;
+  if(gEtcParameters.PedalError == HAL_OK) {
+    gEtcParameters.PedalPosition = (gEtcParameters.Pedal1 + gEtcParameters.Pedal2) / 2;
+  } else {
+    gEtcParameters.PedalPosition = 0;
+  }
 
   gEtcParameters.PedalError |= etc_error_ctx_handle(&gEtcStatus.Sensors.PedalMismatch, abs(gEtcParameters.Pedal1 - gEtcParameters.Pedal2) > 100);
-
 
 
   int16_t tps1_v, tps2_v;
@@ -151,7 +154,11 @@ static void etc_throttle_loop(void)
 
   gEtcParameters.Tps2 = 8191 - gEtcParameters.Tps2;
 
-  gEtcParameters.ThrottlePosition = (gEtcParameters.Tps1 + gEtcParameters.Tps2) / 2;
+  if(gEtcParameters.TpsError == HAL_OK) {
+    gEtcParameters.ThrottlePosition = (gEtcParameters.Tps1 + gEtcParameters.Tps2) / 2;
+  } else {
+    gEtcParameters.ThrottlePosition = 0;
+  }
 
   gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.TpsMismatch, abs(gEtcParameters.Tps1 - gEtcParameters.Tps2) > 100);
 
@@ -180,6 +187,10 @@ static void etc_throttle_loop(void)
     }
   }
 
+  if(gEtcParameters.CommError != HAL_OK) {
+    gEtcParameters.StandaloneMode = 1;
+  }
+
   if(gEtcParameters.CommError != HAL_OK || gEtcParameters.StandaloneMode) {
     gEtcTargetPosition = gEtcParameters.DefaultPosition;
     if(gEtcParameters.DefaultPosition + gEtcParameters.PedalPosition < 8191) {
@@ -193,7 +204,7 @@ static void etc_throttle_loop(void)
 
   pos_filtered = (gEtcParameters.TargetPosition * 1000 + pos_filtered * 9000) / 10000;
 
-  if(gEtcParameters.TpsError == HAL_OK && gEtcParameters.PedalError == HAL_OK && gEtcParameters.DefaultPosition != 0) {
+  if(gEtcParameters.TpsError == HAL_OK && (gEtcParameters.PedalError == HAL_OK || !gEtcParameters.StandaloneMode) && gEtcParameters.DefaultPosition != 0) {
     math_pid_set_koffs(&gThrottlePid, gEtcConfig.PidP * 0.0001f, gEtcConfig.PidI * 0.0001f, gEtcConfig.PidD * 0.0001f);
     math_pid_set_target(&gThrottlePid, pos_filtered);
     pid = math_pid_update(&gThrottlePid, gEtcParameters.ThrottlePosition, now);
