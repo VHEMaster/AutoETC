@@ -46,16 +46,16 @@ typedef struct {
 
 static sEtcConfig gEtcConfig;
 static const sEtcConfig gEtcConfigDefault = {
-    .Tps1Min = 500,
-    .Tps1Max = 4256,
-    .Tps1Limit = 4649,
-    .Tps2Min = 4481,
-    .Tps2Max = 723,
-    .Tps2Limit = 324,
-    .Pedal1Min = 860,
-    .Pedal1Max = 4380,
-    .Pedal2Min = 450,
-    .Pedal2Max = 2222,
+    .Tps1Min = 479,
+    .Tps1Max = 4280,
+    .Tps1Limit = 4647,
+    .Tps2Min = 4493,
+    .Tps2Max = 696,
+    .Tps2Limit = 326,
+    .Pedal1Min = 1287,
+    .Pedal1Max = 4389,
+    .Pedal2Min = 904,
+    .Pedal2Max = 2530,
 
     .PidP = 2400,
     .PidI = 3800,
