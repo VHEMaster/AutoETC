@@ -194,9 +194,10 @@ static void etc_throttle_loop(void)
   }
 
   if(gEtcParameters.CommError != HAL_OK || gEtcParameters.StandaloneMode) {
-    gEtcParameters.TargetPosition = gEtcParameters.DefaultPosition;
     if(gEtcParameters.DefaultPosition + gEtcParameters.PedalPosition < 8191) {
       gEtcParameters.TargetPosition = gEtcParameters.DefaultPosition + gEtcParameters.PedalPosition;
+    } else {
+      gEtcParameters.TargetPosition = 8191;
     }
   }
 
