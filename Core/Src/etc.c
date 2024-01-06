@@ -548,7 +548,7 @@ static void etc_can_loop(void)
   }
 
   if (gEtcParameters.CommError == HAL_OK) {
-    if(DelayDiff(now, gCommLast) > 100000) {
+    if(DelayDiff(now, gCommLast) > 1000000) {
       gEtcParameters.CommError = HAL_ERROR;
     }
   }
