@@ -115,7 +115,6 @@ int8_t can_test(void)
   hal_status = HAL_CAN_Stop(hcan);
   if(hal_status != HAL_OK)
     return -10;
-
   hcan->Init.Mode = CAN_MODE_LOOPBACK;
   hal_status = HAL_CAN_Init(hcan);
   if(hal_status != HAL_OK)
@@ -137,7 +136,7 @@ int8_t can_test(void)
 
     while((status = can_transmit(txid, txrtr, txlength, txdata, NULL)) == 0) {
       now = Delay_Tick;
-      if(DelayDiff(now, last) > 50000) {
+      if(DelayDiff(now, last) > 100000) {
         status = -20;
         break;
       }
@@ -151,7 +150,7 @@ int8_t can_test(void)
 
       while((status = can_receive(&message)) == 0) {
         now = Delay_Tick;
-        if(DelayDiff(now, last) > 10000) {
+        if(DelayDiff(now, last) > 50000) {
           status = -21;
           break;
         }
@@ -172,7 +171,6 @@ int8_t can_test(void)
   if(hal_status != HAL_OK)
     return -13;
   hcan->Init.Mode = CAN_MODE_NORMAL;
-  hcan->Init.Mode = CAN_MODE_LOOPBACK;
   hal_status = HAL_CAN_Init(hcan);
   if(hal_status != HAL_OK)
     return -14;
@@ -198,11 +196,11 @@ int8_t can_send(const sCanRawMessage *message)
 
 void can_loop(void)
 {
+  static sCanRawMessage message = {0};
   static uint8_t state = 0;
   int8_t status;
-  static sCanRawMessage message = {0};
 
-  do {
+  while(1) {
     switch(state) {
       case 0:
         if(protPull(&cantxfifo, &message)) {
@@ -222,7 +220,8 @@ void can_loop(void)
         continue;
         break;
     }
-  } while (0);
+    break;
+  }
 }
 
 int8_t can_transmit(uint32_t id, uint32_t rtr, uint32_t length, const uint8_t *data, uint32_t *p_tx_mailbox)
@@ -234,10 +233,9 @@ int8_t can_transmit(uint32_t id, uint32_t rtr, uint32_t length, const uint8_t *d
   uint32_t now = Delay_Tick;
   HAL_StatusTypeDef hal_status;
   int8_t status = 0;
-  uint32_t is_busy;
   uint32_t level;
 
-  do {
+  while(1) {
     switch(state) {
       case 0:
         header.IDE = CAN_ID_STD;
@@ -262,37 +260,23 @@ int8_t can_transmit(uint32_t id, uint32_t rtr, uint32_t length, const uint8_t *d
       case 2:
         hal_status = HAL_CAN_AddTxMessage(hcan, &header, (uint8_t *)data, &mailbox);
         if(hal_status == HAL_OK) {
-          state++;
+          state = 0;
+          status = 1;
           time_last = now;
           if(p_tx_mailbox)
             *p_tx_mailbox = mailbox;
-          continue;
         }
         else if(DelayDiff(now, time_last) > 50000) {
           state = 0;
           status = -2;
         }
         break;
-      case 3:
-        is_busy = HAL_CAN_IsTxMessagePending(hcan, mailbox);
-        if(is_busy == 0) {
-          state = 0;
-          status = 1;
-        }
-        else if(DelayDiff(now, time_last) > 50000) {
-          status = -3;
-          state = 0;
-          hal_status = HAL_CAN_AbortTxRequest(hcan, mailbox);
-          if(hal_status != HAL_OK) {
-            status = -4;
-          }
-        }
-        break;
       default:
         state = 0;
         continue;
     }
-  } while(0);
+    break;
+  }
 
   return status;
 }
