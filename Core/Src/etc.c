@@ -99,6 +99,14 @@ static void etc_throttle_loop(void)
   uint32_t now = Delay_Tick;
   int16_t pedal1_v, pedal2_v;
   uint16_t pedal1_v_diff, pedal2_v_diff;
+  int16_t pwm_min, pwm_max;
+
+  gEtcStatus.Sensors.Pedal1.confirm_time = 10000;
+  gEtcStatus.Sensors.Pedal2.confirm_time = 10000;
+  gEtcStatus.Sensors.Tps1.confirm_time = 10000;
+  gEtcStatus.Sensors.Tps2.confirm_time = 10000;
+  gEtcStatus.Sensors.PedalMismatch.confirm_time = 100000;
+  gEtcStatus.Sensors.TpsMismatch.confirm_time = 100000;
 
   gEtcParameters.AdcTps1 = adc_get_voltage(AdcChTps1);
   gEtcParameters.AdcTps2 = adc_get_voltage(AdcChTps2);
@@ -165,7 +173,20 @@ static void etc_throttle_loop(void)
   if(gEtcStatus.Outputs.Motor.Availability != HAL_OK) {
     gEtcParameters.MotorError = HAL_ERROR;
   } else if(gEtcStatus.Outputs.Motor.Diagnostic.Data.ErrorFlag) {
-    gEtcParameters.MotorError = HAL_ERROR;
+    // OpenLoad ignorance
+    if(gEtcStatus.Outputs.Motor.Diagnostic.Data.OpenLoad) {
+      if(gEtcStatus.Outputs.Motor.Diagnostic.Data.ErrorFlag == 1 &&
+          gEtcStatus.Outputs.Motor.Diagnostic.Data.ShortToGND == 0 &&
+          gEtcStatus.Outputs.Motor.Diagnostic.Data.ShortToSupply == 0 &&
+          gEtcStatus.Outputs.Motor.Diagnostic.Data.SupplyFailure == 0 &&
+          gEtcStatus.Outputs.Motor.Diagnostic.Data.Temperature == 0 &&
+          gEtcStatus.Outputs.Motor.Diagnostic.Data.AlwaysHigh == 1) {
+        gEtcStatus.Outputs.Motor.Diagnostic.Data.OpenLoad = 0;
+        gEtcStatus.Outputs.Motor.Diagnostic.Data.ErrorFlag = 0;
+      }
+    } else {
+      gEtcParameters.MotorError = HAL_ERROR;
+    }
   }
   gEtcParameters.MotorDiagByte = gEtcStatus.Outputs.Motor.Diagnostic.Byte;
   gEtcParameters.OutsDiagByte = gEtcStatus.Outputs.Outs.Diagnostic.Byte;
@@ -218,17 +239,24 @@ static void etc_throttle_loop(void)
     if(gEtcParameters.FullCloseRequest) {
       math_pid_reset(&gThrottlePid, now);
       pid = -80;
+      pwm_min = -60;
+      pwm_max = 255;
     } else {
       pid = math_pid_update(&gThrottlePid, gEtcParameters.ThrottlePosition, now);
 
       if(gEtcParameters.ThrottlePosition <= 0) {
-        math_pid_set_clamp(&gThrottlePid, -60.0f, 255.0f);
+        pwm_min = -60;
+        pwm_max = 255;
       } else if(gEtcParameters.ThrottlePosition >= 8191) {
-        math_pid_set_clamp(&gThrottlePid, -160.0f, 60.0f);
+        pwm_min = -160;
+        pwm_max = 60;
       } else {
-        math_pid_set_clamp(&gThrottlePid, -160.0f, 255.0f);
+        pwm_min = -160;
+        pwm_max = 255;
       }
     }
+
+    math_pid_set_clamp(&gThrottlePid, pwm_min, pwm_max);
 
     if(pid >= 0) {
       Misc_Motor_SetDir(0);
@@ -585,16 +613,9 @@ void etc_init(void)
   math_pid_init(&gThrottlePid);
   math_pid_set_koffs(&gThrottlePid, gEtcConfig.PidP * 0.0001f, gEtcConfig.PidI * 0.0001f, gEtcConfig.PidD * 0.0001f);
   math_pid_set_clamp(&gThrottlePid, -200.0f, 255.0f);
-  math_pid_set_integral_clamp(&gThrottlePid, -50.0f, 50.0f);
+  math_pid_set_integral_clamp(&gThrottlePid, -50.0f, 80.0f);
 
   math_pid_reset(&gThrottlePid, now);
-
-  gEtcStatus.Sensors.Pedal1.confirm_time = 10000;
-  gEtcStatus.Sensors.Pedal2.confirm_time = 10000;
-  gEtcStatus.Sensors.Tps1.confirm_time = 10000;
-  gEtcStatus.Sensors.Tps2.confirm_time = 10000;
-  gEtcStatus.Sensors.PedalMismatch.confirm_time = 100000;
-  gEtcStatus.Sensors.TpsMismatch.confirm_time = 100000;
 
   ecu_can_init();
 }
