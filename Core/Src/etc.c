@@ -68,7 +68,6 @@ static uint8_t gCanTestStarted = 0;
 static sEtcParametersInt gEtcParameters;
 static sEtcStatus gEtcStatus;
 static sMathPid gThrottlePid;
-static uint16_t gEtcTargetPosition;
 static uint32_t gCommLast = 0;
 
 static HAL_StatusTypeDef etc_error_ctx_handle(sErrorCtx *ctx, uint8_t is_error)
@@ -182,8 +181,8 @@ static void etc_throttle_loop(void)
     startup_time += DelayDiff(now, last);
     if (startup_time >= MOTOR_STARTUP_TIME) {
       gEtcParameters.DefaultPosition = gEtcParameters.ThrottlePosition;
-      gEtcTargetPosition = gEtcParameters.DefaultPosition;
-      pos_filtered = gEtcTargetPosition;
+      gEtcParameters.TargetPosition = gEtcParameters.DefaultPosition;
+      pos_filtered = gEtcParameters.TargetPosition;
     }
   }
 
@@ -195,12 +194,10 @@ static void etc_throttle_loop(void)
   }
 
   if(gEtcParameters.CommError != HAL_OK || gEtcParameters.StandaloneMode) {
-    gEtcTargetPosition = gEtcParameters.DefaultPosition;
+    gEtcParameters.TargetPosition = gEtcParameters.DefaultPosition;
     if(gEtcParameters.DefaultPosition + gEtcParameters.PedalPosition < 8191) {
       gEtcParameters.TargetPosition = gEtcParameters.DefaultPosition + gEtcParameters.PedalPosition;
     }
-  } else {
-    gEtcParameters.TargetPosition = gEtcTargetPosition;
   }
 
   gEtcParameters.TargetPosition = CLAMP(gEtcParameters.TargetPosition, 0, 8191);
@@ -548,6 +545,7 @@ static void etc_can_loop(void)
   }
 
   if (gEtcParameters.CommError == HAL_OK) {
+    now = Delay_Tick;
     if(DelayDiff(now, gCommLast) > 1000000) {
       gEtcParameters.CommError = HAL_ERROR;
     }
