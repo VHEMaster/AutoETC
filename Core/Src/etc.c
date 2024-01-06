@@ -115,8 +115,8 @@ static void etc_throttle_loop(void)
   pedal2_v_diff = gEtcConfig.Pedal2Max - gEtcConfig.Pedal2Min;
 
   gEtcParameters.PedalError = HAL_OK;
-  gEtcParameters.PedalError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Pedal1, abs(gEtcParameters.AdcPedal1 - pedal1_v) > 200);
-  gEtcParameters.PedalError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Pedal2, abs(gEtcParameters.AdcPedal2 - pedal2_v) > 200);
+  gEtcParameters.PedalError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Pedal1, abs(gEtcParameters.AdcPedal1 - pedal1_v) > 80);
+  gEtcParameters.PedalError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Pedal2, abs(gEtcParameters.AdcPedal2 - pedal2_v) > 80);
 
   pedal1_v -= gEtcConfig.Pedal1Min;
   pedal2_v -= gEtcConfig.Pedal2Min;
@@ -142,8 +142,8 @@ static void etc_throttle_loop(void)
   tps2_v_diff = gEtcConfig.Tps2Min - gEtcConfig.Tps2Max;
 
   gEtcParameters.TpsError = HAL_OK;
-  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps1, abs(gEtcParameters.AdcTps1 - tps1_v) > 200);
-  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps2, abs(gEtcParameters.AdcTps2 - tps2_v) > 200);
+  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps1, abs(gEtcParameters.AdcTps1 - tps1_v) > 80);
+  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps2, abs(gEtcParameters.AdcTps2 - tps2_v) > 80);
 
   tps1_v -= gEtcConfig.Tps1Min;
   tps2_v -= gEtcConfig.Tps2Max;
@@ -183,6 +183,8 @@ static void etc_throttle_loop(void)
       gEtcParameters.DefaultPosition = gEtcParameters.ThrottlePosition;
       gEtcParameters.TargetPosition = gEtcParameters.DefaultPosition;
       pos_filtered = gEtcParameters.TargetPosition;
+    } else {
+      memset(&gEtcStatus.Sensors, 0, sizeof(gEtcStatus.Sensors));
     }
   }
 
