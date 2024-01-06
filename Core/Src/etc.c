@@ -203,14 +203,19 @@ static void etc_throttle_loop(void)
 
   gEtcParameters.TargetPosition = CLAMP(gEtcParameters.TargetPosition, 0, 8191);
 
-  pos_filtered = (gEtcParameters.TargetPosition * 1000 + pos_filtered * 9000) / 10000;
+  if(gEtcParameters.FullCloseRequest) {
+    pos_filtered = 0;
+  } else {
+    pos_filtered = (gEtcParameters.TargetPosition * 1000 + pos_filtered * 9000) / 10000;
+  }
 
   if(gEtcParameters.MotorActive && gEtcParameters.TpsError == HAL_OK && (gEtcParameters.PedalError == HAL_OK || !gEtcParameters.StandaloneMode) && gEtcParameters.DefaultPosition != 0) {
     math_pid_set_koffs(&gThrottlePid, gEtcConfig.PidP * 0.0001f, gEtcConfig.PidI * 0.0001f, gEtcConfig.PidD * 0.0001f);
     math_pid_set_target(&gThrottlePid, pos_filtered);
 
     if(gEtcParameters.FullCloseRequest) {
-      pid = -100;
+      math_pid_reset(&gThrottlePid, now);
+      pid = -80;
     } else {
       pid = math_pid_update(&gThrottlePid, gEtcParameters.ThrottlePosition, now);
 
