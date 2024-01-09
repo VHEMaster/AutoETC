@@ -52,10 +52,10 @@ static const sEtcConfig gEtcConfigDefault = {
     .Tps2Min = 4493,
     .Tps2Max = 696,
     .Tps2Limit = 326,
-    .Pedal1Min = 1287,
-    .Pedal1Max = 4389,
-    .Pedal2Min = 904,
-    .Pedal2Max = 2530,
+    .Pedal1Min = 1252,
+    .Pedal1Max = 4360,
+    .Pedal2Min = 884,
+    .Pedal2Max = 2519,
 
     .PidP = 2400,
     .PidI = 3800,
@@ -123,8 +123,8 @@ static void etc_throttle_loop(void)
   pedal2_v_diff = gEtcConfig.Pedal2Max - gEtcConfig.Pedal2Min;
 
   gEtcParameters.PedalError = HAL_OK;
-  gEtcParameters.PedalError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Pedal1, abs(gEtcParameters.AdcPedal1 - pedal1_v) > 80);
-  gEtcParameters.PedalError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Pedal2, abs(gEtcParameters.AdcPedal2 - pedal2_v) > 80);
+  gEtcParameters.PedalError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Pedal1, abs(gEtcParameters.AdcPedal1 - pedal1_v) > 200);
+  gEtcParameters.PedalError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Pedal2, abs(gEtcParameters.AdcPedal2 - pedal2_v) > 200);
 
   pedal1_v -= gEtcConfig.Pedal1Min;
   pedal2_v -= gEtcConfig.Pedal2Min;
@@ -150,8 +150,8 @@ static void etc_throttle_loop(void)
   tps2_v_diff = gEtcConfig.Tps2Min - gEtcConfig.Tps2Max;
 
   gEtcParameters.TpsError = HAL_OK;
-  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps1, abs(gEtcParameters.AdcTps1 - tps1_v) > 80);
-  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps2, abs(gEtcParameters.AdcTps2 - tps2_v) > 80);
+  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps1, abs(gEtcParameters.AdcTps1 - tps1_v) > 100);
+  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps2, abs(gEtcParameters.AdcTps2 - tps2_v) > 100);
 
   tps1_v -= gEtcConfig.Tps1Min;
   tps2_v -= gEtcConfig.Tps2Max;
