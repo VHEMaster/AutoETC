@@ -138,7 +138,7 @@ static void etc_throttle_loop(void)
     gEtcParameters.PedalPosition = 0;
   }
 
-  gEtcParameters.PedalError |= etc_error_ctx_handle(&gEtcStatus.Sensors.PedalMismatch, abs(gEtcParameters.Pedal1 - gEtcParameters.Pedal2) > 100);
+  gEtcParameters.PedalError |= etc_error_ctx_handle(&gEtcStatus.Sensors.PedalMismatch, abs(gEtcParameters.Pedal1 - gEtcParameters.Pedal2) > 200);
 
 
   int16_t tps1_v, tps2_v;
@@ -150,8 +150,8 @@ static void etc_throttle_loop(void)
   tps2_v_diff = gEtcConfig.Tps2Min - gEtcConfig.Tps2Max;
 
   gEtcParameters.TpsError = HAL_OK;
-  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps1, abs(gEtcParameters.AdcTps1 - tps1_v) > 100);
-  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps2, abs(gEtcParameters.AdcTps2 - tps2_v) > 100);
+  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps1, abs(gEtcParameters.AdcTps1 - tps1_v) > 150);
+  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.Tps2, abs(gEtcParameters.AdcTps2 - tps2_v) > 150);
 
   tps1_v -= gEtcConfig.Tps1Min;
   tps2_v -= gEtcConfig.Tps2Max;
@@ -167,7 +167,7 @@ static void etc_throttle_loop(void)
     gEtcParameters.ThrottlePosition = 0;
   }
 
-  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.TpsMismatch, abs(gEtcParameters.Tps1 - gEtcParameters.Tps2) > 100);
+  gEtcParameters.TpsError |= etc_error_ctx_handle(&gEtcStatus.Sensors.TpsMismatch, abs(gEtcParameters.Tps1 - gEtcParameters.Tps2) > 200);
 
   gEtcParameters.MotorError = outputs_get_diagnostic(&gEtcStatus.Outputs);
   if(gEtcStatus.Outputs.Motor.Availability != HAL_OK) {
